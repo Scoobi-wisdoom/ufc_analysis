@@ -10,6 +10,7 @@ with open(path + "db_name.txt", "r") as f:
     db = lines[1].strip()
 engine = sqlalchemy.create_engine("mysql+pymysql://{user}:{pw}@localhost/{db}".format(user="root", pw=pw, db=db))
 
+
 # 1. 데이터베이스에서 Table 을 불러온다.
 ## locations 정보를 불러온다. sql
 with engine.connect() as con:
@@ -59,6 +60,7 @@ with engine.connect() as con:
 with engine.connect() as con:
     rounds = pd.read_sql_table('rounds', con=con)
 
+
 # 2. 초 단위 경기 시간 (데이터 전처리)
 ## time_format 이 3 Rnd (5-5-5) 와 5 Rnd (5-5-5-5-5) 인 것만을 대상. time_id = [16, 17]. 96% 비중. 그런데 [18] 은 뭐지?
 ## [18] 역시 3라운드 각 5분이기 때문에 포함하는 것이 좋다.
@@ -77,8 +79,22 @@ sec.reset_index(drop=True, inplace=True)
 match_id_sec = pd.DataFrame({'match_id': target_match_id_list, 'seconds': min_to_sec + sec})
 
 ## grappling, strikes 는 총 경기 시간으로 나눈 값을 적용해야 한다.
+## rounds 데이터를 match_id 와 fighter_id 를 기준으로 그룹화한 후에 모두 sum() 한다.
 round_sum_by_fighter = rounds.drop('round_number', axis=1).groupby(['match_id', 'fighter_id'], as_index=False).sum()
+round_max_by_fighter = rounds[['match_id', 'fighter_id', 'round_number']].groupby(['match_id', 'fighter_id'], as_index=False).max()
 round_sum_by_fighter.reset_index(drop=True, inplace=True)
-(list(set(round_sum_by_fighter['match_id'])).sort == list(set(match_id_sec['match_id'])).sort())
+
+## match_id, fighter_id 별 경기 기록과  match_id_sec 을 합친다.
+match_fighter_sec = pd.merge(round_sum_by_fighter, match_id_sec, on='match_id')
+round_div_sec = match_fighter_sec.drop(['match_id', 'fighter_id'], axis=1).div(match_fighter_sec['seconds'], axis='index')
+round_div_sec = pd.concat([match_fighter_sec[['match_id', 'fighter_id']], round_div_sec], axis=1)
+## 각 match 별 총 round 개수
+round_div_sec_round = pd.merge(round_div_sec, round_max_by_fighter, on=['match_id', 'fighter_id'])
+round_div_sec_round.drop('seconds', axis=1, inplace=True)
+
+## fighter 별로 각 기록의 평균을 낸다. 나중에는 총 경기 횟수도 고려하자.
+fighter_record_avg = round_div_sec_round.drop('match_id', axis=1).groupby(['fighter_id'], as_index=True).mean()
+
+# 3. 군집 분석
 
 fighters[fighters['fighter_name'].str.contains('Khabib')][['fighter_id', 'fighter_name']]
