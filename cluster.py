@@ -87,12 +87,21 @@ round_max_by_fighter = rounds[['match_id', 'fighter_id', 'round_number']].groupb
 round_sum_by_fighter.reset_index(drop=True, inplace=True)
 
 ## submission 승리 통계. method_id = 0 이 SUB. result_id 0 WL, result_id 3 LW.
-sub_red_win = matches[(matches['method_id'] == 0) & (matches['result_id'] == 0 )][['match_id', 'fighter_red_id']]
+## SUB_landed 에서 grappling 이 아닌 것은 제외한다. sub_no_skill 에 해당하고 sub_skill 에 해당하지 않는 서브미션.
+sub_no_skill = ['injury', 'fatigue', 'chin to eye', 'verbal', 'position - mount']
+sub_skill = ['guillotine', 'choke', 'kimura', 'lock', 'triangle', 'hook', 'triangle', 'omoplata', 'control', 'technical']
+sub_no_skill_index = matches[(matches['method_id'] == 0) & (matches['detail'].str.lower().str.contains('|'.join(sub_no_skill))) & (~matches['detail'].str.lower().str.contains('|'.join(sub_skill)))].index
+sub_no_skill_index.append(matches[(matches['method_id'] == 0) & (matches['detail'].str.len() == 0)].index)
+
+sub_matches = matches.drop(sub_no_skill_index)
+
+sub_red_win = sub_matches[(sub_matches['method_id'] == 0) & (sub_matches['result_id'] == 0 )][['match_id', 'fighter_red_id']]
 sub_red_win.rename({'fighter_red_id': 'fighter_id'}, axis=1, inplace=True)
-sub_blue_win = matches[(matches['method_id'] == 0) & (matches['result_id'] == 3 )][['match_id', 'fighter_blue_id']]
+sub_blue_win = sub_matches[(sub_matches['method_id'] == 0) & (sub_matches['result_id'] == 3 )][['match_id', 'fighter_blue_id']]
 sub_blue_win.rename({'fighter_blue_id': 'fighter_id'}, axis=1, inplace=True)
 sub_win = pd.concat([sub_red_win, sub_blue_win], ignore_index=True)
 sub_win['SUB_landed'] = 1
+
 
 ## KO/TKO 승리 통계. method_id = 1, 2. result_id 0 WL, result_id 3 LW.
 ko_red_win = matches[((matches['method_id'] == 1) | (matches['method_id'] == 2)) & (matches['result_id'] == 0 )][['match_id', 'fighter_red_id']]
@@ -100,18 +109,18 @@ ko_red_win.rename({'fighter_red_id': 'fighter_id'}, axis=1, inplace=True)
 ko_blue_win = matches[((matches['method_id'] == 1) | (matches['method_id'] == 2)) & (matches['result_id'] == 3 )][['match_id', 'fighter_blue_id']]
 ko_blue_win.rename({'fighter_blue_id': 'fighter_id'}, axis=1, inplace=True)
 ko_win = pd.concat([ko_red_win, ko_blue_win], ignore_index=True)
-ko_win['KD_landed'] = 1
+ko_win['KO'] = 1
 
-## round_sum_by_fighter 에 SUB_landed, KD_landed column 을 추가한다.
+## round_sum_by_fighter 에 SUB_landed, KO column 을 추가한다.
 round_sum_by_fighter = pd.merge(round_sum_by_fighter, sub_win, how='left', on=['match_id', 'fighter_id'])
 round_sum_by_fighter = pd.merge(round_sum_by_fighter, ko_win, how='left', on=['match_id', 'fighter_id'])
 round_sum_by_fighter.fillna(value=0, inplace=True)
-round_sum_by_fighter = round_sum_by_fighter[[
-    'match_id', 'fighter_id', 'TD_landed', 'TD_attempted', 'SUB_attempted',
-    'SUB_landed', 'REV', 'CTRL_sec', 'KD', 'KD_landed',
-    'HEAD_landed', 'HEAD_attempted', 'BODY_landed', 'BODY_attempted', 'LEG_landed',
-    'LEG_attempted', 'DISTANCE_landed', 'DISTANCE_attempted', 'CLINCH_landed', 'CLINCH_attempted',
-    'GROUND_landed', 'GROUND_attempted']]
+# round_sum_by_fighter = round_sum_by_fighter[[
+#     'match_id', 'fighter_id', 'TD_landed', 'TD_attempted', 'SUB_attempted',
+#     'SUB_landed', 'REV', 'CTRL_sec', 'KD', 'KO',
+#     'HEAD_landed', 'HEAD_attempted', 'BODY_landed', 'BODY_attempted', 'LEG_landed',
+#     'LEG_attempted', 'DISTANCE_landed', 'DISTANCE_attempted', 'CLINCH_landed', 'CLINCH_attempted',
+#     'GROUND_landed', 'GROUND_attempted']]
 
 ## match_id, fighter_id 별 경기 기록과  match_id_sec 을 합친다.
 match_fighter_sec = pd.merge(round_sum_by_fighter, match_id_sec, on='match_id')
@@ -123,21 +132,26 @@ round_div_sec_round.drop('seconds', axis=1, inplace=True)
 
 ## fighter 별로 각 기록의 평균을 낸다. 나중에는 총 경기 횟수도 고려하자.
 fighter_record_avg = round_div_sec_round.drop('match_id', axis=1).groupby(['fighter_id'], as_index=True).mean()
+## submission rate 을 구한다. KO 와 KD 는 배반 사건이다.
+fighter_record_avg['SUB %'] = fighter_record_avg['SUB_landed'] / fighter_record_avg['SUB_attempted']
 
+demo = pd.merge(fighter_record_avg, fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
+demo[['fighter_id', 'fighter_name', 'fighter_nickname', 'SUB %']].sort_values(by='SUB %', ascending=False)
+demo[demo['fighter_name'].str.contains('Ortega')][['fighter_id', 'fighter_name', 'fighter_nickname', 'SUB %']]
 # 3. 군집 분석 - grappling
 ## normalization
 # data_g = fighter_record_avg.values
 # data_g = fighter_record_avg[['TD_landed', 'TD_attempted', 'SUB_attempted', 'REV', 'CTRL_sec']].values
 # data_g = fighter_record_avg[['TD_landed', 'TD_attempted', 'SUB_attempted', 'REV']].values
-data_g = fighter_record_avg[['SUB_attempted', 'SUB_landed']].values
-# scaler = preprocessing.StandardScaler()
-# print(scaler.fit(data_g))
+data_g = fighter_record_avg[['SUB_attempted', 'SUB_landed', 'SUB %']].values
+scaler = preprocessing.StandardScaler()
+print(scaler.fit(data_g))
 # # print(scaler.mean_)
-# data_normal = scaler.transform(data_g)
+data_normal = scaler.transform(data_g)
 
 ## Kmeans clustering
-kmeans = KMeans(n_clusters=2).fit(data_g)
-predict = kmeans.predict(data_g)
+kmeans = KMeans(n_clusters=2).fit(data_normal)
+predict = kmeans.predict(data_normal)
 centroids = kmeans.cluster_centers_
 
 cluster_g = pd.Series(predict, index=fighter_record_avg.index, name='style_g')
