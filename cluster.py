@@ -1,6 +1,8 @@
 import sqlalchemy
 import pandas as pd
 import pymysql
+import matplotlib.pyplot as plt
+import numpy as np
 from sklearn import preprocessing
 from sklearn.cluster import KMeans
 
@@ -86,6 +88,16 @@ round_sum_by_fighter = rounds.drop('round_number', axis=1).groupby(['match_id', 
 round_max_by_fighter = rounds[['match_id', 'fighter_id', 'round_number']].groupby(['match_id', 'fighter_id'], as_index=False).max()
 round_sum_by_fighter.reset_index(drop=True, inplace=True)
 
+## 총 승리 통계. result_id 0 WL, result_id 3 LW.
+target_matches = matches.loc[target_match_id_list]
+total_red_win = target_matches[target_matches['result_id'] == 0][['match_id', 'fighter_red_id']]
+total_red_win.rename({'fighter_red_id': 'fighter_id'}, axis=1, inplace=True)
+total_blue_win = target_matches[target_matches['result_id'] == 3][['match_id', 'fighter_blue_id']]
+total_blue_win.rename({'fighter_blue_id': 'fighter_id'}, axis=1, inplace=True)
+total_win = pd.concat([total_red_win, total_blue_win], ignore_index=True)
+total_win['ufc_win'] = 1
+fighter_ufc_win = total_win.drop('match_id', axis=1).groupby(['fighter_id'], as_index=False).sum()
+
 ## submission 승리 통계. method_id = 0 이 SUB. result_id 0 WL, result_id 3 LW.
 ## SUB_landed 에서 grappling 이 아닌 것은 제외한다. sub_no_skill 에 해당하고 sub_skill 에 해당하지 않는 서브미션.
 sub_no_skill = ['injury', 'fatigue', 'chin to eye', 'verbal', 'position - mount']
@@ -101,7 +113,6 @@ sub_blue_win = sub_matches[(sub_matches['method_id'] == 0) & (sub_matches['resul
 sub_blue_win.rename({'fighter_blue_id': 'fighter_id'}, axis=1, inplace=True)
 sub_win = pd.concat([sub_red_win, sub_blue_win], ignore_index=True)
 sub_win['SUB_landed'] = 1
-
 
 ## KO/TKO 승리 통계. method_id = 1, 2. result_id 0 WL, result_id 3 LW.
 ko_red_win = matches[((matches['method_id'] == 1) | (matches['method_id'] == 2)) & (matches['result_id'] == 0 )][['match_id', 'fighter_red_id']]
@@ -122,22 +133,48 @@ round_sum_by_fighter.fillna(value=0, inplace=True)
 #     'LEG_attempted', 'DISTANCE_landed', 'DISTANCE_attempted', 'CLINCH_landed', 'CLINCH_attempted',
 #     'GROUND_landed', 'GROUND_attempted']]
 
+## submission 성공률, KO 갯수 계산
+fighter_record_sum = round_sum_by_fighter.drop('match_id', axis=1).groupby(['fighter_id'], as_index=False).sum()
+fighter_record_sum['SUB %'] = fighter_record_sum['SUB_landed'] / fighter_record_sum['SUB_attempted']
+fighter_record_sum = pd.merge(fighter_record_sum, fighter_ufc_win, on='fighter_id')[['fighter_id', 'SUB %', 'SUB_landed', 'ufc_win']]
+fighter_record_sum['SUB_win/win'] = fighter_record_sum['SUB_landed'] / fighter_record_sum['ufc_win']
+## 서브미션승 /총승 >=1 이면 1로 수정
+fighter_record_sum.loc[fighter_record_sum['SUB_win/win'] > 1, 'SUB_win/win'] = 1
+fighter_sub = fighter_record_sum[['fighter_id', 'SUB %', 'SUB_win/win']]
+# fighter_ko = fighter_record_sum[['fighter_id', 'KO']]
+
 ## match_id, fighter_id 별 경기 기록과  match_id_sec 을 합친다.
 match_fighter_sec = pd.merge(round_sum_by_fighter, match_id_sec, on='match_id')
 round_div_sec = match_fighter_sec.drop(['match_id', 'fighter_id'], axis=1).div(match_fighter_sec['seconds'], axis='index')
 round_div_sec = pd.concat([match_fighter_sec[['match_id', 'fighter_id']], round_div_sec], axis=1)
 ## 각 match 별 총 round 개수
 round_div_sec_round = pd.merge(round_div_sec, round_max_by_fighter, on=['match_id', 'fighter_id'])
-round_div_sec_round.drop('seconds', axis=1, inplace=True)
+round_div_sec_round.drop(['round_number', 'seconds'], axis=1, inplace=True)
 
 ## fighter 별로 각 기록의 평균을 낸다. 나중에는 총 경기 횟수도 고려하자.
-fighter_record_avg = round_div_sec_round.drop('match_id', axis=1).groupby(['fighter_id'], as_index=True).mean()
-## submission rate 을 구한다. KO 와 KD 는 배반 사건이다.
-fighter_record_avg['SUB %'] = fighter_record_avg['SUB_landed'] / fighter_record_avg['SUB_attempted']
+fighter_record_avg = round_div_sec_round.drop(['match_id'], axis=1).groupby(['fighter_id'], as_index=True).mean()
+## submission rate, ko 갯수 을 추가한다.
+fighter_record_avg = pd.merge(fighter_record_avg, fighter_sub, on='fighter_id')
+## Georges St-Pierre 도 SUB % 가 0.125 이다. 수준 높은 선수랑 싸울수록 성공률이 낮아지기 때문이다.
+## SUB % * SUB_WIN/WIN 의 값을 새로운 통계량으로 만들자.
+fighter_record_avg['SUB_quotient'] = fighter_record_avg['SUB %'] * fighter_record_avg['SUB_win/win']
+# fighter_record_avg = pd.merge(fighter_record_avg, fighter_ko, on='fighter_id')
 
 demo = pd.merge(fighter_record_avg, fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
-demo[['fighter_id', 'fighter_name', 'fighter_nickname', 'SUB %']].sort_values(by='SUB %', ascending=False)
-demo[demo['fighter_name'].str.contains('Ortega')][['fighter_id', 'fighter_name', 'fighter_nickname', 'SUB %']]
+demo[['fighter_id', 'fighter_name', 'fighter_nickname', 'SUB_quotient']].sort_values(by='SUB_quotient', ascending=False)
+demo[demo['fighter_name'].str.contains('Georges')][['fighter_id', 'fighter_name', 'fighter_nickname', 'SUB %', 'SUB_quotient']]
+demo[demo['SUB %'] == 1]
+len(demo[demo['SUB %'].isna()]) / len(demo)
+plt.hist(demo[~demo['SUB_quotient'].isna()]['SUB_quotient'])
+plt.hist(demo[~demo['KO'].isna()]['KO'], log=True)
+demo[demo['KO'] > 0.01]
+demo[demo['fighter_name'].str.contains('|'.join(['Chuck Liddell', 'Rich Franklin', 'Andrei Arlovski', 'Alistair Overeem', 'Dustin Poirier', 'Stipe Miocic', 'Max Holloway', 'Francis Ngannou','Anderson Silva']))]['KO'].sort_values()
+
+ko_par = float(demo[demo['fighter_name'].str.contains('Ngan')]['KO'] / 2)
+1 - len(demo[demo['KO'] >= ko_par]) / len(demo)
+demo.iloc[demo[demo['KO'] >= demo['KO'].quantile(0.9)]['KO'].sort_values().index, :][['fighter_name', 'KO']]
+demo['SUB_quotient'].quantile(0.6, 'nearest')
+len(demo[demo['SUB_quotient'] > 0.15]) / len(demo)
 # 3. 군집 분석 - grappling
 ## normalization
 # data_g = fighter_record_avg.values
