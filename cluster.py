@@ -6,6 +6,21 @@ import numpy as np
 from sklearn import preprocessing
 from sklearn.cluster import KMeans
 
+# 선수 id, 이름, 닉네임 가져온다.
+def name_info(fighter):
+    if type(fighter) == int:
+        try:
+            return fighters[fighters['fighter_id'] == fighter][['fighter_id', 'fighter_name', 'fighter_nickname']]
+        except:
+            print('No id avaliable')
+    elif type(fighter) == str:
+        try:
+            return fighters[fighters['fighter_name'].str.contains(fighter)][['fighter_id', 'fighter_name', 'fighter_nickname']]
+        except:
+            print('No name avaliable')
+    else:
+        return Exception
+
 path = '../scraper/'
 # MYSQL 에 연결
 with open(path + "db_name.txt", "r") as f:
@@ -114,6 +129,13 @@ sub_blue_win.rename({'fighter_blue_id': 'fighter_id'}, axis=1, inplace=True)
 sub_win = pd.concat([sub_red_win, sub_blue_win], ignore_index=True)
 sub_win['SUB_landed'] = 1
 
+sub_blue_loss = sub_matches[(sub_matches['method_id'] == 0) & (sub_matches['result_id'] == 0 )][['match_id', 'fighter_blue_id']]
+sub_blue_loss.rename({'fighter_blue_id': 'fighter_id'}, axis=1, inplace=True)
+sub_red_loss = sub_matches[(sub_matches['method_id'] == 0) & (sub_matches['result_id'] == 3 )][['match_id', 'fighter_red_id']]
+sub_red_loss.rename({'fighter_red_id': 'fighter_id'}, axis=1, inplace=True)
+sub_loss = pd.concat([sub_blue_loss, sub_red_loss], ignore_index=True)
+sub_loss['SUB_absorbed'] = 1
+
 ## KO/TKO 승리 통계. method_id = 1, 2. result_id 0 WL, result_id 3 LW.
 ko_red_win = matches[((matches['method_id'] == 1) | (matches['method_id'] == 2)) & (matches['result_id'] == 0 )][['match_id', 'fighter_red_id']]
 ko_red_win.rename({'fighter_red_id': 'fighter_id'}, axis=1, inplace=True)
@@ -122,8 +144,9 @@ ko_blue_win.rename({'fighter_blue_id': 'fighter_id'}, axis=1, inplace=True)
 ko_win = pd.concat([ko_red_win, ko_blue_win], ignore_index=True)
 ko_win['KO'] = 1
 
-## round_sum_by_fighter 에 SUB_landed, KO column 을 추가한다.
+## round_sum_by_fighter 에 SUB_landed, SUB_absorbed, KO column 을 추가한다.
 round_sum_by_fighter = pd.merge(round_sum_by_fighter, sub_win, how='left', on=['match_id', 'fighter_id'])
+round_sum_by_fighter = pd.merge(round_sum_by_fighter, sub_loss, how='left', on=['match_id', 'fighter_id'])
 round_sum_by_fighter = pd.merge(round_sum_by_fighter, ko_win, how='left', on=['match_id', 'fighter_id'])
 round_sum_by_fighter.fillna(value=0, inplace=True)
 # round_sum_by_fighter = round_sum_by_fighter[[
@@ -136,11 +159,11 @@ round_sum_by_fighter.fillna(value=0, inplace=True)
 ## submission 성공률, KO 갯수 계산
 fighter_record_sum = round_sum_by_fighter.drop('match_id', axis=1).groupby(['fighter_id'], as_index=False).sum()
 fighter_record_sum['SUB %'] = fighter_record_sum['SUB_landed'] / fighter_record_sum['SUB_attempted']
-fighter_record_sum = pd.merge(fighter_record_sum, fighter_ufc_win, on='fighter_id')[['fighter_id', 'SUB %', 'SUB_landed', 'ufc_win']]
-fighter_record_sum['SUB_win/win'] = fighter_record_sum['SUB_landed'] / fighter_record_sum['ufc_win']
+fighter_record_sum = pd.merge(fighter_record_sum, fighter_ufc_win, on='fighter_id')
+fighter_record_sum['SUB_win_loss/win'] = (fighter_record_sum['SUB_landed'] - fighter_record_sum['SUB_absorbed']) / fighter_record_sum['ufc_win']
 ## 서브미션승 /총승 >=1 이면 1로 수정
-fighter_record_sum.loc[fighter_record_sum['SUB_win/win'] > 1, 'SUB_win/win'] = 1
-fighter_sub = fighter_record_sum[['fighter_id', 'SUB %', 'SUB_win/win']]
+fighter_record_sum.loc[fighter_record_sum['SUB_win_loss/win'] > 1, 'SUB_win_loss/win'] = 1
+fighter_sub = fighter_record_sum[['fighter_id', 'SUB %', 'SUB_win_loss/win']]
 # fighter_ko = fighter_record_sum[['fighter_id', 'KO']]
 
 ## match_id, fighter_id 별 경기 기록과  match_id_sec 을 합친다.
@@ -156,13 +179,33 @@ fighter_record_avg = round_div_sec_round.drop(['match_id'], axis=1).groupby(['fi
 ## submission rate, ko 갯수 을 추가한다.
 fighter_record_avg = pd.merge(fighter_record_avg, fighter_sub, on='fighter_id')
 ## Georges St-Pierre 도 SUB % 가 0.125 이다. 수준 높은 선수랑 싸울수록 성공률이 낮아지기 때문이다.
-## SUB % * SUB_WIN/WIN 의 값을 새로운 통계량으로 만들자.
-fighter_record_avg['SUB_quotient'] = fighter_record_avg['SUB %'] * fighter_record_avg['SUB_win/win']
+## SUB % * (SUB_WIN - SUB_LOSS)/WIN 의 값을 새로운 통계량으로 만들자.
+fighter_record_avg['SUB_quotient'] = fighter_record_avg['SUB %'] * fighter_record_avg['SUB_win_loss/win']
 # fighter_record_avg = pd.merge(fighter_record_avg, fighter_ko, on='fighter_id')
+
+
+# 3. 데이터 분석 - BJJ. 상위 25%
+fighter_type = fighter_record_avg[['fighter_id']].copy()
+
+sub_par = fighter_record_avg['SUB_quotient'].fillna(0).quantile(0.75, 'nearest')
+fighter_type.loc[fighter_record_avg['SUB_quotient'] >= sub_par, 'BJJ'] = 1
+fighter_type['BJJ'] = fighter_type['BJJ'].fillna(0)
+
+
+# 4. 군집 분석 - wrestling.
+['fighter_id', 'TD_landed', 'TD_attempted', 'SUB_attempted', 'REV',
+       'CTRL_sec', 'KD', 'HEAD_landed', 'HEAD_attempted', 'BODY_landed',
+       'BODY_attempted', 'LEG_landed', 'LEG_attempted', 'DISTANCE_landed',
+       'DISTANCE_attempted', 'CLINCH_landed', 'CLINCH_attempted',
+       'GROUND_landed', 'GROUND_attempted', 'SUB_landed', 'SUB_absorbed', 'KO',
+       'SUB %', 'SUB_win_loss/win', 'SUB_quotient']
+
+
+
 
 demo = pd.merge(fighter_record_avg, fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
 demo[['fighter_id', 'fighter_name', 'fighter_nickname', 'SUB_quotient']].sort_values(by='SUB_quotient', ascending=False)
-demo[demo['fighter_name'].str.contains('Georges')][['fighter_id', 'fighter_name', 'fighter_nickname', 'SUB %', 'SUB_quotient']]
+demo[demo['fighter_name'].str.contains('Vettori')][['fighter_id', 'fighter_name', 'fighter_nickname', 'SUB %', 'SUB_quotient']]
 demo[demo['SUB %'] == 1]
 len(demo[demo['SUB %'].isna()]) / len(demo)
 plt.hist(demo[~demo['SUB_quotient'].isna()]['SUB_quotient'])
@@ -173,26 +216,34 @@ demo[demo['fighter_name'].str.contains('|'.join(['Chuck Liddell', 'Rich Franklin
 ko_par = float(demo[demo['fighter_name'].str.contains('Ngan')]['KO'] / 2)
 1 - len(demo[demo['KO'] >= ko_par]) / len(demo)
 demo.iloc[demo[demo['KO'] >= demo['KO'].quantile(0.9)]['KO'].sort_values().index, :][['fighter_name', 'KO']]
-demo['SUB_quotient'].quantile(0.6, 'nearest')
+demo['SUB_quotient'].fillna(0).quantile(0.8, 'nearest')
+demo['KO'].fillna(0).quantile(0.99, 'nearest')
 len(demo[demo['SUB_quotient'] > 0.15]) / len(demo)
+
+
 # 3. 군집 분석 - grappling
 ## normalization
-# data_g = fighter_record_avg.values
+data_g = fighter_record_avg[[
+    'TD_landed', 'TD_attempted', 'REV', 'CTRL_sec', 'KD',
+    'DISTANCE_landed', 'DISTANCE_attempted', 'CLINCH_landed', 'CLINCH_attempted', 'GROUND_landed',
+    'GROUND_attempted', 'KO', 'SUB_quotient']]
+data_g = data_g.fillna(0).values
+
 # data_g = fighter_record_avg[['TD_landed', 'TD_attempted', 'SUB_attempted', 'REV', 'CTRL_sec']].values
 # data_g = fighter_record_avg[['TD_landed', 'TD_attempted', 'SUB_attempted', 'REV']].values
-data_g = fighter_record_avg[['SUB_attempted', 'SUB_landed', 'SUB %']].values
+# data_g = fighter_record_avg[['SUB %', 'SUB_quotient']].fillna(0).values
 scaler = preprocessing.StandardScaler()
 print(scaler.fit(data_g))
 # # print(scaler.mean_)
 data_normal = scaler.transform(data_g)
 
 ## Kmeans clustering
-kmeans = KMeans(n_clusters=2).fit(data_normal)
+kmeans = KMeans(n_clusters=3).fit(data_normal)
 predict = kmeans.predict(data_normal)
 centroids = kmeans.cluster_centers_
 
 cluster_g = pd.Series(predict, index=fighter_record_avg.index, name='style_g')
-cluster_g = pd.merge(cluster_g, fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
+cluster_g = pd.merge(pd.concat([fighter_record_avg['fighter_id'], cluster_g], axis=1), fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
 
 cluster_g[cluster_g['fighter_name'].str.contains('Khabib')]
 cluster_g[cluster_g['fighter_name'].str.contains('Covington')]
