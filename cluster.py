@@ -3,7 +3,6 @@ import pandas as pd
 import pymysql
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy import stats
 from sklearn import preprocessing
 from sklearn.cluster import KMeans
 
@@ -238,17 +237,6 @@ fighter_type['BJJ'] = fighter_type['BJJ'].fillna(0)
 
 # 4. 데이터 분석 - Wrestling. 상위 25%
 ## TD, TD defence, GROUND_landed, GROUND_absorbed 이렇게 판단하는 것이 맞을까?
-np.random.seed(seed=1)
-df = pd.DataFrame(np.random.uniform(0,1,(10)), columns=['a'])
-
-#quantile function
-x = df.quantile(0.5)[0]
-
-#inverse of quantile
-
-stats.percentileofscore(df['a'],x)
-
-
 Wrestling = fighter_record_avg[['fighter_id']].copy()
 Wrestling['sec'] = Wrestling['fighter_id'].apply(lambda x: ring_time(x))
 Wrestling['TD_attempted'] = Wrestling['fighter_id'].apply(lambda x: offence_rounds(x, 'TD_attempted'))
@@ -273,16 +261,18 @@ Wrestling['TD_quotient'].quantile(0.5)
 Wrestling['GROUND_quotient'].quantile(0.5)
 
 demo = pd.merge(Wrestling[['fighter_id', 'TD_landed/sec', 'TD_absorbed/sec', 'GROUND_landed/sec', 'GROUND_absorbed/sec', 'TD_quotient', 'GROUND_quotient']], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
+demo_rank = pd.concat([demo['fighter_id'], demo[['TD_landed/sec', 'TD_absorbed/sec', 'GROUND_landed/sec', 'GROUND_absorbed/sec', 'TD_quotient', 'GROUND_quotient']].fillna(0).rank(pct=True)] , axis=1)
+
 demo_sec = pd.merge(Wrestling.loc[Wrestling['TD_landed/sec'].sort_values(ascending=False).index], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
 demo_TD = pd.merge(Wrestling.loc[Wrestling['TD_quotient'].sort_values(ascending=False).index], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
 demo_GROUND = pd.merge(Wrestling.loc[Wrestling['GROUND_quotient'].sort_values(ascending=False).index], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
 # 5. 군집 분석 - wrestling.
-['fighter_id', 'TD_landed', 'TD_attempted', 'SUB_attempted', 'REV',
-       'CTRL_sec', 'KD', 'HEAD_landed', 'HEAD_attempted', 'BODY_landed',
-       'BODY_attempted', 'LEG_landed', 'LEG_attempted', 'DISTANCE_landed',
-       'DISTANCE_attempted', 'CLINCH_landed', 'CLINCH_attempted',
-       'GROUND_landed', 'GROUND_attempted', 'SUB_landed', 'SUB_absorbed', 'KO',
-       'SUB %', 'SUB_win_loss/win', 'SUB_quotient']
+# ['fighter_id', 'TD_landed', 'TD_attempted', 'SUB_attempted', 'REV',
+#        'CTRL_sec', 'KD', 'HEAD_landed', 'HEAD_attempted', 'BODY_landed',
+#        'BODY_attempted', 'LEG_landed', 'LEG_attempted', 'DISTANCE_landed',
+#        'DISTANCE_attempted', 'CLINCH_landed', 'CLINCH_attempted',
+#        'GROUND_landed', 'GROUND_attempted', 'SUB_landed', 'SUB_absorbed', 'KO',
+#        'SUB %', 'SUB_win_loss/win', 'SUB_quotient']
 
 
 
