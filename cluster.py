@@ -3,23 +3,9 @@ import pandas as pd
 import pymysql
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy import stats
 from sklearn import preprocessing
 from sklearn.cluster import KMeans
-
-# 선수 id, 이름, 닉네임 가져온다.
-def name_info(fighter):
-    if type(fighter) == int:
-        try:
-            return fighters[fighters['fighter_id'] == fighter][['fighter_id', 'fighter_name', 'fighter_nickname']]
-        except:
-            print('No id avaliable')
-    elif type(fighter) == str:
-        try:
-            return fighters[fighters['fighter_name'].str.contains(fighter)][['fighter_id', 'fighter_name', 'fighter_nickname']]
-        except:
-            print('No name avaliable')
-    else:
-        return Exception
 
 path = '../scraper/'
 # MYSQL 에 연결
@@ -28,7 +14,6 @@ with open(path + "db_name.txt", "r") as f:
     pw = lines[0].strip()
     db = lines[1].strip()
 engine = sqlalchemy.create_engine("mysql+pymysql://{user}:{pw}@localhost/{db}".format(user="root", pw=pw, db=db))
-
 
 # 1. 데이터베이스에서 Table 을 불러온다.
 ## locations 정보를 불러온다. sql
@@ -78,6 +63,66 @@ with engine.connect() as con:
 ## rounds Table 을 MYSQL 에서 불러온다.
 with engine.connect() as con:
     rounds = pd.read_sql_table('rounds', con=con)
+
+####################################################### 사용자 정의 함수 시작 #######################################################
+# 1. 선수 id, 이름, 닉네임 가져온다.
+def name_info(fighter):
+    if type(fighter) == int:
+        try:
+            return fighters[fighters['fighter_id'] == fighter][['fighter_id', 'fighter_name', 'fighter_nickname']]
+        except:
+            print('No id avaliable')
+    elif type(fighter) == str:
+        try:
+            return fighters[fighters['fighter_name'].str.contains(fighter)][['fighter_id', 'fighter_name', 'fighter_nickname']]
+        except:
+            print('No name avaliable')
+    else:
+        return Exception
+
+# 2. 선수가 공격한 기록
+def offence_rounds(fighter_id, col_name):
+    try:
+        co_idx = rounds.columns.to_list().index(col_name)
+    except AttributeError:
+        print(AttributeError, ':', col_name, 'is not in rounds')
+
+    try:
+        fighter_id = int(fighter_id)
+    except ValueError:
+        print(ValueError, ':', fighter_id, 'is not int')
+
+    if fighter_id not in rounds['fighter_id']:
+        print('fighter_id', fighter_id, 'is not in rounds')
+        return
+    return rounds[rounds['fighter_id'] == fighter_id].iloc[:, co_idx].sum()
+
+# 3. 선수가 당한 기록
+def defence_rounds(fighter_id, col_name):
+    try:
+        co_idx = rounds.columns.to_list().index(col_name)
+    except AttributeError:
+        print(AttributeError, ':', col_name, 'is not in rounds')
+
+    try:
+        fighter_id = int(fighter_id)
+    except ValueError:
+        print(ValueError, ':', fighter_id, 'is not int')
+
+    if fighter_id not in rounds['fighter_id']:
+        print('fighter_id', fighter_id, 'is not in rounds')
+        return
+
+    relevant_match_id = rounds[rounds['fighter_id'] == fighter_id]['match_id']
+    relevant_match = rounds[rounds['match_id'].isin(relevant_match_id)]
+
+    return relevant_match[relevant_match['fighter_id'] != fighter_id].iloc[:, co_idx].sum()
+
+# 4. 선수가 경기한 시간
+def ring_time(fighter):
+    fighter_id = int(name_info(fighter)['fighter_id'])
+    return match_fighter_sec[match_fighter_sec['fighter_id'] == fighter_id]['seconds'].sum()
+####################################################### 사용자 정의 함수 끝 #######################################################
 
 
 # 2. 초 단위 경기 시간 (데이터 전처리)
@@ -191,8 +236,47 @@ sub_par = fighter_record_avg['SUB_quotient'].fillna(0).quantile(0.75, 'nearest')
 fighter_type.loc[fighter_record_avg['SUB_quotient'] >= sub_par, 'BJJ'] = 1
 fighter_type['BJJ'] = fighter_type['BJJ'].fillna(0)
 
+# 4. 데이터 분석 - Wrestling. 상위 25%
+## TD, TD defence, GROUND_landed, GROUND_absorbed 이렇게 판단하는 것이 맞을까?
+np.random.seed(seed=1)
+df = pd.DataFrame(np.random.uniform(0,1,(10)), columns=['a'])
 
-# 4. 군집 분석 - wrestling.
+#quantile function
+x = df.quantile(0.5)[0]
+
+#inverse of quantile
+
+stats.percentileofscore(df['a'],x)
+
+
+Wrestling = fighter_record_avg[['fighter_id']].copy()
+Wrestling['sec'] = Wrestling['fighter_id'].apply(lambda x: ring_time(x))
+Wrestling['TD_attempted'] = Wrestling['fighter_id'].apply(lambda x: offence_rounds(x, 'TD_attempted'))
+Wrestling['TD_landed'] = Wrestling['fighter_id'].apply(lambda x: offence_rounds(x, 'TD_landed'))
+Wrestling['TD_absorbed'] = Wrestling['fighter_id'].apply(lambda x: defence_rounds(x, 'TD_landed'))
+Wrestling['GROUND_attempted'] = Wrestling['fighter_id'].apply(lambda x: offence_rounds(x, 'GROUND_attempted'))
+Wrestling['GROUND_landed'] = Wrestling['fighter_id'].apply(lambda x: offence_rounds(x, 'GROUND_landed'))
+Wrestling['GROUND_absorbed'] = Wrestling['fighter_id'].apply(lambda x: defence_rounds(x, 'GROUND_landed'))
+
+Wrestling['TD_landed/sec'] = Wrestling['TD_landed'] / Wrestling['sec']
+Wrestling['TD_absorbed/sec'] = Wrestling['TD_absorbed'] / Wrestling['sec']
+Wrestling['GROUND_landed/sec'] = Wrestling['GROUND_landed'] / Wrestling['sec']
+Wrestling['GROUND_absorbed/sec'] = Wrestling['GROUND_absorbed'] / Wrestling['sec']
+Wrestling['TD_quotient'] = (Wrestling['TD_landed'] - Wrestling['TD_absorbed']) / Wrestling['TD_attempted']
+Wrestling['GROUND_quotient'] = (Wrestling['GROUND_landed'] - Wrestling['GROUND_absorbed']) / Wrestling['GROUND_attempted']
+
+Wrestling['TD_landed/sec'].quantile(0.5)
+Wrestling['TD_absorbed/sec'].quantile(0.5)
+Wrestling['GROUND_landed/sec'].quantile(0.5)
+Wrestling['GROUND_absorbed/sec'].quantile(0.5)
+Wrestling['TD_quotient'].quantile(0.5)
+Wrestling['GROUND_quotient'].quantile(0.5)
+
+demo = pd.merge(Wrestling[['fighter_id', 'TD_landed/sec', 'TD_absorbed/sec', 'GROUND_landed/sec', 'GROUND_absorbed/sec', 'TD_quotient', 'GROUND_quotient']], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
+demo_sec = pd.merge(Wrestling.loc[Wrestling['TD_landed/sec'].sort_values(ascending=False).index], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
+demo_TD = pd.merge(Wrestling.loc[Wrestling['TD_quotient'].sort_values(ascending=False).index], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
+demo_GROUND = pd.merge(Wrestling.loc[Wrestling['GROUND_quotient'].sort_values(ascending=False).index], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
+# 5. 군집 분석 - wrestling.
 ['fighter_id', 'TD_landed', 'TD_attempted', 'SUB_attempted', 'REV',
        'CTRL_sec', 'KD', 'HEAD_landed', 'HEAD_attempted', 'BODY_landed',
        'BODY_attempted', 'LEG_landed', 'LEG_attempted', 'DISTANCE_landed',
