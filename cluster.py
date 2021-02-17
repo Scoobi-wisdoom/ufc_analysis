@@ -233,39 +233,44 @@ fighter_type = fighter_record_avg[['fighter_id']].copy()
 
 sub_par = fighter_record_avg['SUB_quotient'].fillna(0).quantile(0.75, 'nearest')
 fighter_type.loc[fighter_record_avg['SUB_quotient'] >= sub_par, 'BJJ'] = 1
-fighter_type['BJJ'] = fighter_type['BJJ'].fillna(0)
 
 # 4. 데이터 분석 - Wrestling. 상위 25%
-## TD, TD defence, GROUND_landed, GROUND_absorbed 이렇게 판단하는 것이 맞을까?
+## TD_landed, GROUND_landed, TD % 의 랭크로 판단하자. quantile 0.4.
 Wrestling = fighter_record_avg[['fighter_id']].copy()
 Wrestling['sec'] = Wrestling['fighter_id'].apply(lambda x: ring_time(x))
 Wrestling['TD_attempted'] = Wrestling['fighter_id'].apply(lambda x: offence_rounds(x, 'TD_attempted'))
 Wrestling['TD_landed'] = Wrestling['fighter_id'].apply(lambda x: offence_rounds(x, 'TD_landed'))
-Wrestling['TD_absorbed'] = Wrestling['fighter_id'].apply(lambda x: defence_rounds(x, 'TD_landed'))
-Wrestling['GROUND_attempted'] = Wrestling['fighter_id'].apply(lambda x: offence_rounds(x, 'GROUND_attempted'))
 Wrestling['GROUND_landed'] = Wrestling['fighter_id'].apply(lambda x: offence_rounds(x, 'GROUND_landed'))
-Wrestling['GROUND_absorbed'] = Wrestling['fighter_id'].apply(lambda x: defence_rounds(x, 'GROUND_landed'))
 
+Wrestling['TD %'] = Wrestling['TD_landed'] / Wrestling['TD_attempted']
+Wrestling['TD_def %'] = 1 - Wrestling['TD_absorbed'] / Wrestling['TD_attempted_absorbed']
 Wrestling['TD_landed/sec'] = Wrestling['TD_landed'] / Wrestling['sec']
-Wrestling['TD_absorbed/sec'] = Wrestling['TD_absorbed'] / Wrestling['sec']
 Wrestling['GROUND_landed/sec'] = Wrestling['GROUND_landed'] / Wrestling['sec']
-Wrestling['GROUND_absorbed/sec'] = Wrestling['GROUND_absorbed'] / Wrestling['sec']
-Wrestling['TD_quotient'] = (Wrestling['TD_landed'] - Wrestling['TD_absorbed']) / Wrestling['TD_attempted']
-Wrestling['GROUND_quotient'] = (Wrestling['GROUND_landed'] - Wrestling['GROUND_absorbed']) / Wrestling['GROUND_attempted']
 
-Wrestling['TD_landed/sec'].quantile(0.5)
-Wrestling['TD_absorbed/sec'].quantile(0.5)
-Wrestling['GROUND_landed/sec'].quantile(0.5)
-Wrestling['GROUND_absorbed/sec'].quantile(0.5)
-Wrestling['TD_quotient'].quantile(0.5)
-Wrestling['GROUND_quotient'].quantile(0.5)
+Wrestling = Wrestling.fillna(0)
+## quantile 을 증가시켜가면서 25% 를 가려낸다.
+for q in np.linspace(1,0,101):
+    q_TD_land = Wrestling['TD_landed/sec'].quantile(q)
+    q_ground = Wrestling['GROUND_landed/sec'].quantile(q)
+    q_TD_R = Wrestling['TD %'].quantile(q)
+    ratio = len(Wrestling[(Wrestling['TD_landed/sec'] >= q_TD_land) & (Wrestling['GROUND_landed/sec'] >= q_ground) & (Wrestling['TD %'] >= q_TD_R)]) / len(Wrestling)
+    if ratio >= 0.25:
+        wrestling_type = Wrestling[(Wrestling['TD_landed/sec'] >= q_TD_land) & (Wrestling['GROUND_landed/sec'] >= q_ground) & (Wrestling['TD %'] >= q_TD_R)]['fighter_id']
+        break
 
-demo = pd.merge(Wrestling[['fighter_id', 'TD_landed/sec', 'TD_absorbed/sec', 'GROUND_landed/sec', 'GROUND_absorbed/sec', 'TD_quotient', 'GROUND_quotient']], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
-demo_rank = pd.concat([demo['fighter_id'], demo[['TD_landed/sec', 'TD_absorbed/sec', 'GROUND_landed/sec', 'GROUND_absorbed/sec', 'TD_quotient', 'GROUND_quotient']].fillna(0).rank(pct=True)] , axis=1)
+fighter_type.loc[fighter_type[fighter_type['fighter_id'].isin(wrestling_type)].index, 'Wrestling'] = 1
 
-demo_sec = pd.merge(Wrestling.loc[Wrestling['TD_landed/sec'].sort_values(ascending=False).index], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
-demo_TD = pd.merge(Wrestling.loc[Wrestling['TD_quotient'].sort_values(ascending=False).index], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
-demo_GROUND = pd.merge(Wrestling.loc[Wrestling['GROUND_quotient'].sort_values(ascending=False).index], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
+# 5. 데이터 분석 - Boxer. 상위 25%
+fighter_record_sum.columns
+# 6. 데이터 분석 - Kick boxer. 상위 25%
+
+fighter_type = fighter_type.fillna(0)
+# demo = pd.merge(Wrestling[['fighter_id', 'TD_landed/sec', 'TD_absorbed/sec', 'GROUND_landed/sec', 'GROUND_absorbed/sec', 'TD %', 'TD_def %']], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
+# demo_rank = pd.concat([demo['fighter_id'], demo[['TD_landed/sec', 'TD_absorbed/sec', 'GROUND_landed/sec', 'GROUND_absorbed/sec', 'TD %', 'TD_def %']].fillna(0).rank(pct=True)] , axis=1)
+# plt.scatter(demo_rank['TD_landed/sec'], demo_rank['TD %'])
+# plt.scatter(Wrestling['TD %'], Wrestling['TD_def %'])
+# demo_sec = pd.merge(Wrestling.loc[Wrestling['TD_landed/sec'].sort_values(ascending=False).index], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
+
 # 5. 군집 분석 - wrestling.
 # ['fighter_id', 'TD_landed', 'TD_attempted', 'SUB_attempted', 'REV',
 #        'CTRL_sec', 'KD', 'HEAD_landed', 'HEAD_attempted', 'BODY_landed',
