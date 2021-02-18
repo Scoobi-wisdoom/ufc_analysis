@@ -73,7 +73,7 @@ def name_info(fighter):
             print('No id avaliable')
     elif type(fighter) == str:
         try:
-            return fighters[fighters['fighter_name'].str.contains(fighter)][['fighter_id', 'fighter_name', 'fighter_nickname']]
+            return int(fighters[fighters['fighter_name'].str.contains(fighter)]['fighter_id'])
         except:
             print('No name avaliable')
     else:
@@ -243,7 +243,6 @@ Wrestling['TD_landed'] = Wrestling['fighter_id'].apply(lambda x: offence_rounds(
 Wrestling['GROUND_landed'] = Wrestling['fighter_id'].apply(lambda x: offence_rounds(x, 'GROUND_landed'))
 
 Wrestling['TD %'] = Wrestling['TD_landed'] / Wrestling['TD_attempted']
-Wrestling['TD_def %'] = 1 - Wrestling['TD_absorbed'] / Wrestling['TD_attempted_absorbed']
 Wrestling['TD_landed/sec'] = Wrestling['TD_landed'] / Wrestling['sec']
 Wrestling['GROUND_landed/sec'] = Wrestling['GROUND_landed'] / Wrestling['sec']
 
@@ -261,7 +260,30 @@ for q in np.linspace(1,0,101):
 fighter_type.loc[fighter_type[fighter_type['fighter_id'].isin(wrestling_type)].index, 'Wrestling'] = 1
 
 # 5. 데이터 분석 - Boxer. 상위 25%
-fighter_record_sum.columns
+Striking = fighter_record_avg[['fighter_id']].copy()
+Striking['sec'] = Striking['fighter_id'].apply(lambda x: ring_time(x))
+Striking['HEAD_landed'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'HEAD_landed'))
+Striking['HEAD_attempted'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'HEAD_attempted'))
+Striking['BODY_landed'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'BODY_landed'))
+Striking['BODY_attempted'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'BODY_attempted'))
+Striking['LEG_landed'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'LEG_landed'))
+Striking['LEG_attempted'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'LEG_attempted'))
+Striking['DISTANCE_landed'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'DISTANCE_landed'))
+Striking['DISTANCE_attempted'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'DISTANCE_attempted'))
+Striking['CLINCH_landed'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'CLINCH_landed'))
+Striking['CLINCH_attempted'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'CLINCH_attempted'))
+
+Striking[Striking.drop(['fighter_id', 'sec'], axis=1).columns] = Striking.drop(['fighter_id', 'sec'], axis=1).div(Striking['sec'], axis=0)
+Striking.drop('sec', axis=1, inplace=True)
+Striking['target_head'] = Striking['HEAD_landed'] / Striking[['HEAD_landed', 'BODY_landed', 'LEG_landed']].sum(axis=1)
+Striking['target_body'] = Striking['BODY_landed'] / Striking[['HEAD_landed', 'BODY_landed', 'LEG_landed']].sum(axis=1)
+Striking['target_leg'] = Striking['LEG_landed'] / Striking[['HEAD_landed', 'BODY_landed', 'LEG_landed']].sum(axis=1)
+Striking['head/body'] = Striking['HEAD_landed'] / Striking['BODY_landed']
+
+Striking_rank = Striking[['fighter_id']].copy()
+Striking_rank = pd.concat([Striking_rank, Striking.drop('fighter_id', axis=1).rank(pct=True)], axis=1)
+print(Striking_rank[Striking_rank['fighter_id'] == name_info('Maycee Barber')].iloc[:,11:].to_string())
+
 # 6. 데이터 분석 - Kick boxer. 상위 25%
 
 fighter_type = fighter_type.fillna(0)
@@ -302,27 +324,26 @@ len(demo[demo['SUB_quotient'] > 0.15]) / len(demo)
 
 # 3. 군집 분석 - grappling
 ## normalization
-data_g = fighter_record_avg[[
-    'TD_landed', 'TD_attempted', 'REV', 'CTRL_sec', 'KD',
-    'DISTANCE_landed', 'DISTANCE_attempted', 'CLINCH_landed', 'CLINCH_attempted', 'GROUND_landed',
-    'GROUND_attempted', 'KO', 'SUB_quotient']]
-data_g = data_g.fillna(0).values
+# data_g = fighter_record_avg[[
+#     'TD_landed', 'TD_attempted', 'REV', 'CTRL_sec', 'KD',
+#     'DISTANCE_landed', 'DISTANCE_attempted', 'CLINCH_landed', 'CLINCH_attempted', 'GROUND_landed',
+#     'GROUND_attempted', 'KO', 'SUB_quotient']]
+# data_g = data_g.fillna(0).values
 
-# data_g = fighter_record_avg[['TD_landed', 'TD_attempted', 'SUB_attempted', 'REV', 'CTRL_sec']].values
-# data_g = fighter_record_avg[['TD_landed', 'TD_attempted', 'SUB_attempted', 'REV']].values
-# data_g = fighter_record_avg[['SUB %', 'SUB_quotient']].fillna(0).values
-scaler = preprocessing.StandardScaler()
-print(scaler.fit(data_g))
-# # print(scaler.mean_)
-data_normal = scaler.transform(data_g)
+data_normal = Striking_rank[['target_head', 'target_body', 'target_leg']].copy().fillna(0)
+data_normal[data_normal.isna().any(axis=1)]
+# scaler = preprocessing.StandardScaler()
+# print(scaler.fit(data_g))
+# # # print(scaler.mean_)
+# data_normal = scaler.transform(data_g)
 
 ## Kmeans clustering
 kmeans = KMeans(n_clusters=3).fit(data_normal)
 predict = kmeans.predict(data_normal)
 centroids = kmeans.cluster_centers_
 
-cluster_g = pd.Series(predict, index=fighter_record_avg.index, name='style_g')
-cluster_g = pd.merge(pd.concat([fighter_record_avg['fighter_id'], cluster_g], axis=1), fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
+cluster_g = pd.Series(predict, index=Striking_rank.index, name='style_g')
+cluster_g = pd.merge(pd.concat([Striking_rank['fighter_id'], cluster_g], axis=1), fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
 
 cluster_g[cluster_g['fighter_name'].str.contains('Khabib')]
 cluster_g[cluster_g['fighter_name'].str.contains('Covington')]
