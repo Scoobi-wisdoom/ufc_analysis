@@ -262,27 +262,42 @@ fighter_type.loc[fighter_type[fighter_type['fighter_id'].isin(wrestling_type)].i
 # 5. 데이터 분석 - Boxer. 상위 25%
 Striking = fighter_record_avg[['fighter_id']].copy()
 Striking['sec'] = Striking['fighter_id'].apply(lambda x: ring_time(x))
+Striking['DISTANCE_landed'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'DISTANCE_landed'))
+Striking['DISTANCE_attempted'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'DISTANCE_attempted'))
+Striking['CLINCH_landed'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'CLINCH_landed'))
+Striking['CLINCH_attempted'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'CLINCH_attempted'))
+Striking['GROUND_landed'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'GROUND_landed'))
+Striking['GROUND_attempted'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'GROUND_attempted'))
 Striking['HEAD_landed'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'HEAD_landed'))
 Striking['HEAD_attempted'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'HEAD_attempted'))
 Striking['BODY_landed'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'BODY_landed'))
 Striking['BODY_attempted'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'BODY_attempted'))
 Striking['LEG_landed'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'LEG_landed'))
 Striking['LEG_attempted'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'LEG_attempted'))
-Striking['DISTANCE_landed'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'DISTANCE_landed'))
-Striking['DISTANCE_attempted'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'DISTANCE_attempted'))
-Striking['CLINCH_landed'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'CLINCH_landed'))
-Striking['CLINCH_attempted'] = Striking['fighter_id'].apply(lambda x: offence_rounds(x, 'CLINCH_attempted'))
 
 Striking[Striking.drop(['fighter_id', 'sec'], axis=1).columns] = Striking.drop(['fighter_id', 'sec'], axis=1).div(Striking['sec'], axis=0)
 Striking.drop('sec', axis=1, inplace=True)
+Striking['position_standing'] = Striking['DISTANCE_landed'] / Striking[['DISTANCE_landed', 'CLINCH_landed', 'GROUND_landed']].sum(axis=1)
+Striking['position_clinch'] = Striking['CLINCH_landed'] / Striking[['DISTANCE_landed', 'CLINCH_landed', 'GROUND_landed']].sum(axis=1)
+Striking['position_ground'] = Striking['GROUND_landed'] / Striking[['DISTANCE_landed', 'CLINCH_landed', 'GROUND_landed']].sum(axis=1)
 Striking['target_head'] = Striking['HEAD_landed'] / Striking[['HEAD_landed', 'BODY_landed', 'LEG_landed']].sum(axis=1)
 Striking['target_body'] = Striking['BODY_landed'] / Striking[['HEAD_landed', 'BODY_landed', 'LEG_landed']].sum(axis=1)
 Striking['target_leg'] = Striking['LEG_landed'] / Striking[['HEAD_landed', 'BODY_landed', 'LEG_landed']].sum(axis=1)
-Striking['head/body'] = Striking['HEAD_landed'] / Striking['BODY_landed']
+Striking['target_var'] = Striking[['target_head', 'target_body', 'target_leg']].var(axis=1)
+
+# Striking['body/head'] = Striking['BODY_landed'] / Striking['HEAD_landed']
 
 Striking_rank = Striking[['fighter_id']].copy()
 Striking_rank = pd.concat([Striking_rank, Striking.drop('fighter_id', axis=1).rank(pct=True)], axis=1)
-print(Striking_rank[Striking_rank['fighter_id'] == name_info('Maycee Barber')].iloc[:,11:].to_string())
+
+test_names = ['Miocic', 'Khabib', 'Valentina Shevchenko', 'Amanda Nunes', 'Jorge Masvidal', 'Holly Holm', 'Dong Hyun Kim', 'Adesanya', 'Gaethje', 'Jon Jones', 'Dern',
+              'Anthony Pettis', 'McGregor', 'Stephen Thompson', 'Dustin Poir', 'Edson Barboza', 'Ji Yeon', 'Donald Cerrone','Junior Dos Santos',
+              'Anderson Silva', 'Max Holloway', 'Zhang Weili', 'Ngann', 'Joanna Jedrzejczyk', 'Cody Garbrandt', 'Paulo Costa', 'Yoel Romero',
+              'Alexa Grasso', 'Maycee Barber']
+print(Striking_rank[Striking_rank['fighter_id'] == name_info('Gaethje')].iloc[:,-6:].to_string())
+for name in test_names:
+    print(name, ':')
+    print(Striking[Striking['fighter_id'] == name_info(name)].iloc[:,-7:].to_string())
 
 # 6. 데이터 분석 - Kick boxer. 상위 25%
 
