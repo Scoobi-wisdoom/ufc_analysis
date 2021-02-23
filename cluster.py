@@ -299,8 +299,12 @@ for name in test_names:
     print(name, ':')
     print(Striking[Striking['fighter_id'] == name_info(name)].iloc[:,-7:].to_string())
 
-# 6. 데이터 분석 - Kick boxer. 상위 25%
+len(Striking[Striking['target_var'] < 0.1]) / len(Striking)
 
+# plt.scatter(data=Striking, x='target_head', y='target_var', s=3)
+plt.hist(data=Striking, x='target_head', density=True, bins=20)
+plt.close()
+# 6. 데이터 분석 - Kick boxer. 상위 25%
 fighter_type = fighter_type.fillna(0)
 # demo = pd.merge(Wrestling[['fighter_id', 'TD_landed/sec', 'TD_absorbed/sec', 'GROUND_landed/sec', 'GROUND_absorbed/sec', 'TD %', 'TD_def %']], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
 # demo_rank = pd.concat([demo['fighter_id'], demo[['TD_landed/sec', 'TD_absorbed/sec', 'GROUND_landed/sec', 'GROUND_absorbed/sec', 'TD %', 'TD_def %']].fillna(0).rank(pct=True)] , axis=1)
