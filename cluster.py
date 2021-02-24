@@ -277,6 +277,11 @@ Striking['LEG_attempted'] = Striking['fighter_id'].apply(lambda x: offence_round
 
 Striking[Striking.drop(['fighter_id', 'sec'], axis=1).columns] = Striking.drop(['fighter_id', 'sec'], axis=1).div(Striking['sec'], axis=0)
 Striking.drop('sec', axis=1, inplace=True)
+
+Striking['landed_total'] = Striking[['HEAD_landed', 'BODY_landed',  'LEG_landed']].sum(axis=1)
+Striking['attempted_total'] = Striking[['HEAD_attempted', 'BODY_attempted', 'LEG_attempted']].sum(axis=1)
+Striking['sig %'] = Striking['landed_total'] / Striking['attempted_total']
+
 Striking['position_standing'] = Striking['DISTANCE_landed'] / Striking[['DISTANCE_landed', 'CLINCH_landed', 'GROUND_landed']].sum(axis=1)
 Striking['position_clinch'] = Striking['CLINCH_landed'] / Striking[['DISTANCE_landed', 'CLINCH_landed', 'GROUND_landed']].sum(axis=1)
 Striking['position_ground'] = Striking['GROUND_landed'] / Striking[['DISTANCE_landed', 'CLINCH_landed', 'GROUND_landed']].sum(axis=1)
@@ -284,6 +289,7 @@ Striking['target_head'] = Striking['HEAD_landed'] / Striking[['HEAD_landed', 'BO
 Striking['target_body'] = Striking['BODY_landed'] / Striking[['HEAD_landed', 'BODY_landed', 'LEG_landed']].sum(axis=1)
 Striking['target_leg'] = Striking['LEG_landed'] / Striking[['HEAD_landed', 'BODY_landed', 'LEG_landed']].sum(axis=1)
 Striking['target_var'] = Striking[['target_head', 'target_body', 'target_leg']].var(axis=1)
+Striking['target_var2'] = Striking[['target_body', 'target_leg']].var(axis=1)
 
 # Striking['body/head'] = Striking['BODY_landed'] / Striking['HEAD_landed']
 
@@ -293,17 +299,35 @@ Striking_rank = pd.concat([Striking_rank, Striking.drop('fighter_id', axis=1).ra
 test_names = ['Miocic', 'Khabib', 'Valentina Shevchenko', 'Amanda Nunes', 'Jorge Masvidal', 'Holly Holm', 'Dong Hyun Kim', 'Adesanya', 'Gaethje', 'Jon Jones', 'Dern',
               'Anthony Pettis', 'McGregor', 'Stephen Thompson', 'Dustin Poir', 'Edson Barboza', 'Ji Yeon', 'Donald Cerrone','Junior Dos Santos',
               'Anderson Silva', 'Max Holloway', 'Zhang Weili', 'Ngann', 'Joanna Jedrzejczyk', 'Cody Garbrandt', 'Paulo Costa', 'Yoel Romero',
-              'Alexa Grasso', 'Maycee Barber']
-print(Striking_rank[Striking_rank['fighter_id'] == name_info('Gaethje')].iloc[:,-6:].to_string())
+              'Alexa Grasso', 'Maycee Barber', 'Robert Whittaker']
 for name in test_names:
     print(name, ':')
-    print(Striking[Striking['fighter_id'] == name_info(name)].iloc[:,-7:].to_string())
+    print(Striking[Striking['fighter_id'] == name_info(name)].iloc[:,-10:].to_string())
 
-len(Striking[Striking['target_var'] < 0.1]) / len(Striking)
-
-# plt.scatter(data=Striking, x='target_head', y='target_var', s=3)
-plt.hist(data=Striking, x='target_head', density=True, bins=20)
+## 먼저 striker 인지 아닌지 판단해야 한다. 타격 횟수가 너무 적다면 striker 가 아니다. 또한 유효타격률도 고려해야 한다.
+## target_head 와 landed_total 은 상관관계가 없어 보인다.
+## landed_total 은 타격가 여부를 판단하는 데 도움이 안 된다.
+## kick striker 는 target_head 가 낮다. target_head 가 낮다고 kick striker 는 아니다.
+plt.scatter(data=Striking, x='target_var', y='target_var2')
+plt.scatter(data=Striking, x='target_head', y='target_var')
+plt.scatter(data=Striking, x='target_head', y='target_var2')
+plt.ylim(0,0.01)
 plt.close()
+# plt.hist(data=Striking, x='landed_total', density=False, cumulative=False, log=True)
+plt.hist(data=Striking, x='sig %', density=False, cumulative=False, log=False)
+plt.xlim(0, 0.2)
+plt.close()
+Striking['landed_total'].quantile(0.5)
+Striking[Striking['landed_total'] >= 0.15][['target_head','fighter_id', 'landed_total']]
+
+
+plt.scatter(data=Striking, x='landed_total', y='target_head')
+plt.xlim(0, 0.2)
+# plt.scatter(data=Striking, x='target_head', y='target_var', s=3)
+plt.hist(data=Striking, x='target_head', density=True, bins=20, cumulative=True)
+plt.close()
+pd.merge(Striking[Striking['target_head'] <= 0.4], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')[['fighter_name', 'target_head']].sort_values(ascending=False, by='target_head')
+
 # 6. 데이터 분석 - Kick boxer. 상위 25%
 fighter_type = fighter_type.fillna(0)
 # demo = pd.merge(Wrestling[['fighter_id', 'TD_landed/sec', 'TD_absorbed/sec', 'GROUND_landed/sec', 'GROUND_absorbed/sec', 'TD %', 'TD_def %']], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')
