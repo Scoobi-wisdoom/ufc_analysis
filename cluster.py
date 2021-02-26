@@ -289,7 +289,10 @@ Striking['target_head'] = Striking['HEAD_landed'] / Striking[['HEAD_landed', 'BO
 Striking['target_body'] = Striking['BODY_landed'] / Striking[['HEAD_landed', 'BODY_landed', 'LEG_landed']].sum(axis=1)
 Striking['target_leg'] = Striking['LEG_landed'] / Striking[['HEAD_landed', 'BODY_landed', 'LEG_landed']].sum(axis=1)
 Striking['target_var'] = Striking[['target_head', 'target_body', 'target_leg']].var(axis=1)
-Striking['target_var2'] = Striking[['target_body', 'target_leg']].var(axis=1)
+## target_body 와 target_leg 의 차이를 알아보자. 비교를 쉽게 하기 위해 비중으로 비교한다.
+## 즉, target_body /(target_body + target_leg) 가 0.5 에서 얼마나 벗어났는지를 비교한다.
+## BODY_landed / (BODY_landed + LEG_landed) - 0.5 의 값이 0 에 가까울수록 균일.
+Striking['target_2_differ'] = Striking['BODY_landed'] / Striking[['BODY_landed', 'LEG_landed']].sum(axis=1) - 0.5
 
 # Striking['body/head'] = Striking['BODY_landed'] / Striking['HEAD_landed']
 
