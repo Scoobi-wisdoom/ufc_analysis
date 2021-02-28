@@ -2,6 +2,7 @@ import sqlalchemy
 import pandas as pd
 import pymysql
 import matplotlib.pyplot as plt
+from scipy.stats import gaussian_kde
 import numpy as np
 from sklearn import preprocessing
 from sklearn.cluster import KMeans
@@ -307,14 +308,20 @@ for name in test_names:
     print(name, ':')
     print(Striking[Striking['fighter_id'] == name_info(name)].iloc[:,-10:].to_string())
 
-## 먼저 striker 인지 아닌지 판단해야 한다. 타격 횟수가 너무 적다면 striker 가 아니다. 또한 유효타격률도 고려해야 한다.
 ## target_head 와 landed_total 은 상관관계가 없어 보인다.
 ## landed_total 은 타격가 여부를 판단하는 데 도움이 안 된다.
 ## kick striker 는 target_head 가 낮다. target_head 가 낮다고 kick striker 는 아니다.
-plt.scatter(data=Striking, x='target_var', y='target_var2')
+plt.scatter(data=Striking, x='target_var', y='target_2_differ')
 plt.scatter(data=Striking, x='target_head', y='target_var')
-plt.scatter(data=Striking, x='target_head', y='target_var2')
-plt.ylim(0,0.01)
+plt.scatter(data=Striking, x='target_head', y='target_2_differ')
+
+x = Striking['target_head'].fillna(0)
+y = Striking['target_2_differ'].fillna(0)
+plt.hist2d(x, y, (50, 50), cmap=plt.cm.jet)
+plt.colorbar()
+
+
+
 plt.close()
 # plt.hist(data=Striking, x='landed_total', density=False, cumulative=False, log=True)
 plt.hist(data=Striking, x='sig %', density=False, cumulative=False, log=False)
