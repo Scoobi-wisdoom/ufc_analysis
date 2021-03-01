@@ -306,36 +306,21 @@ test_names = ['Miocic', 'Khabib', 'Valentina Shevchenko', 'Amanda Nunes', 'Jorge
               'Alexa Grasso', 'Maycee Barber', 'Robert Whittaker']
 for name in test_names:
     print(name, ':')
-    print(Striking[Striking['fighter_id'] == name_info(name)].iloc[:,-10:].to_string())
+    print(Striking[Striking['fighter_id'] == name_info(name)].iloc[:,-5:].to_string())
 
 ## target_head 와 landed_total 은 상관관계가 없어 보인다.
 ## landed_total 은 타격가 여부를 판단하는 데 도움이 안 된다.
 ## kick striker 는 target_head 가 낮다. target_head 가 낮다고 kick striker 는 아니다.
-plt.scatter(data=Striking, x='target_var', y='target_2_differ')
-plt.scatter(data=Striking, x='target_head', y='target_var')
+## tartet_head 와 target_2_differ 는 독립으로 판단할 수 있다.
 plt.scatter(data=Striking, x='target_head', y='target_2_differ')
-
 x = Striking['target_head'].fillna(0)
 y = Striking['target_2_differ'].fillna(0)
 plt.hist2d(x, y, (50, 50), cmap=plt.cm.jet)
 plt.colorbar()
-
-
-
 plt.close()
-# plt.hist(data=Striking, x='landed_total', density=False, cumulative=False, log=True)
-plt.hist(data=Striking, x='sig %', density=False, cumulative=False, log=False)
-plt.xlim(0, 0.2)
-plt.close()
-Striking['landed_total'].quantile(0.5)
-Striking[Striking['landed_total'] >= 0.15][['target_head','fighter_id', 'landed_total']]
 
+Striking['target_head'].quantile(0.75)
 
-plt.scatter(data=Striking, x='landed_total', y='target_head')
-plt.xlim(0, 0.2)
-# plt.scatter(data=Striking, x='target_head', y='target_var', s=3)
-plt.hist(data=Striking, x='target_head', density=True, bins=20, cumulative=True)
-plt.close()
 pd.merge(Striking[Striking['target_head'] <= 0.4], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')[['fighter_name', 'target_head']].sort_values(ascending=False, by='target_head')
 
 # 6. 데이터 분석 - Kick boxer. 상위 25%
