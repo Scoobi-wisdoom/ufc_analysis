@@ -289,7 +289,7 @@ Striking['position_ground'] = Striking['GROUND_landed'] / Striking[['DISTANCE_la
 Striking['target_head'] = Striking['HEAD_landed'] / Striking[['HEAD_landed', 'BODY_landed', 'LEG_landed']].sum(axis=1)
 Striking['target_body'] = Striking['BODY_landed'] / Striking[['HEAD_landed', 'BODY_landed', 'LEG_landed']].sum(axis=1)
 Striking['target_leg'] = Striking['LEG_landed'] / Striking[['HEAD_landed', 'BODY_landed', 'LEG_landed']].sum(axis=1)
-Striking['target_var'] = Striking[['target_head', 'target_body', 'target_leg']].var(axis=1)
+# Striking['target_var'] = Striking[['target_head', 'target_body', 'target_leg']].var(axis=1)
 ## target_body 와 target_leg 의 차이를 알아보자. 비교를 쉽게 하기 위해 비중으로 비교한다.
 ## 즉, target_body /(target_body + target_leg) 가 0.5 에서 얼마나 벗어났는지를 비교한다.
 ## BODY_landed / (BODY_landed + LEG_landed) - 0.5 의 값이 0 에 가까울수록 균일.
@@ -319,6 +319,8 @@ plt.hist2d(x, y, (50, 50), cmap=plt.cm.jet)
 plt.colorbar()
 plt.close()
 
+plt.hist(data=Striking, x='target_head', bins=20, cumulative=True)
+plt.hist(data=Striking, x='target_2_differ', bins=20, cumulative=True, density=True)
 Striking['target_head'].quantile(0.75)
 
 pd.merge(Striking[Striking['target_head'] <= 0.4], fighters[['fighter_id', 'fighter_name', 'fighter_nickname']], on='fighter_id')[['fighter_name', 'target_head']].sort_values(ascending=False, by='target_head')
