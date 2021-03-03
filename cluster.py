@@ -303,7 +303,7 @@ Striking_rank = pd.concat([Striking_rank, Striking.drop('fighter_id', axis=1).ra
 test_names = ['Miocic', 'Khabib', 'Valentina Shevchenko', 'Amanda Nunes', 'Jorge Masvidal', 'Holly Holm', 'Dong Hyun Kim', 'Adesanya', 'Gaethje', 'Jon Jones', 'Dern',
               'Anthony Pettis', 'McGregor', 'Stephen Thompson', 'Dustin Poir', 'Edson Barboza', 'Ji Yeon', 'Donald Cerrone','Junior Dos Santos',
               'Anderson Silva', 'Max Holloway', 'Zhang Weili', 'Ngann', 'Joanna Jedrzejczyk', 'Cody Garbrandt', 'Paulo Costa', 'Yoel Romero',
-              'Alexa Grasso', 'Maycee Barber', 'Robert Whittaker']
+              'Alexa Grasso', 'Maycee Barber', 'Robert Whittaker', 'Jan Blachowicz']
 for name in test_names:
     print(name, ':')
     print(Striking[Striking['fighter_id'] == name_info(name)].iloc[:,-5:].to_string())
